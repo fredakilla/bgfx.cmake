@@ -81,3 +81,6 @@ if( BGFX_INSTALL )
 		endforeach()
 	endif()
 endif()
+
+# add shaderc (library version)
+add_subdirectory(brtshaderc)
