@@ -867,7 +867,7 @@ namespace bgfx
 			);
 	}    
 
-	bool compileShader(const char* _varying, char* _shader, uint32_t _shaderLen, Options& _options, bx::FileWriter* _writer)
+    bool compileShader(const char* _varying, char* _shader, uint32_t _shaderLen, Options& _options, bx::WriterI* _writer)
 	{
 		uint32_t glsl  = 0;
 		uint32_t essl  = 0;
@@ -2114,7 +2114,7 @@ namespace bgfx
     char     _shaderErrorBuffer[UINT16_MAX];
     uint16_t _shaderErrorBufferPos = 0;
 
-	int compileShader(int _argc, const char* _argv[])
+    int compileShader(MemoryBuffer* resultShader, int _argc, const char* _argv[])
 	{
         _shaderErrorBuffer[0] = '\0';
         _shaderErrorBufferPos = 0;
@@ -2311,7 +2311,7 @@ namespace bgfx
 			bx::memSet(&data[size+1], 0, padding);
 			bx::close(&reader);
 
-			bx::FileWriter* writer = NULL;
+            bx::FileWriter* writer = NULL;
 
 			if (NULL != bin2c)
 			{
@@ -2319,19 +2319,20 @@ namespace bgfx
 			}
 			else
 			{
-				writer = new bx::FileWriter;
+                //@@writer = new bx::FileWriter;
+                writer = new BufferWriter(resultShader);
 			}
 
-			if (!bx::open(writer, outFilePath) )
-			{
-				fprintf(stderr, "Unable to open output file '%s'.", outFilePath);
-				return bx::kExitFailure;
-			}
+            //@@if (!bx::open(writer, outFilePath) )
+            //@@{
+            //@@    fprintf(stderr, "Unable to open output file '%s'.", outFilePath);
+            //@@    return bx::kExitFailure;
+            //@@}
 
-			if ( compileShader(attribdef.getData(), data, size, options, writer) )
-				compiled = true;
+            if ( compileShader(attribdef.getData(), data, size, options, writer) )
+                compiled = true;
 
-			bx::close(writer);
+            bx::close(writer);
 			delete writer;
 		}
 
@@ -2365,6 +2366,61 @@ namespace bgfx
 
     bool compilePSSLShader(const Options&, uint32_t, const std::string&, bx::WriterI*) {}
     bool compileSPIRVShader(const Options&, uint32_t, const std::string&, bx::WriterI*) {}
+
+
+
+    bgfx::ShaderHandle compileShader(uint32_t type, const char* filePath, const char* defines, const char* varyingPath)
+    {
+        // shaderc build command line
+        // ex: ./shaderc -f colored.fs -o colored_VERTEX_COLOR.frag \
+        //          --varyingdef colored.io --type f --platform linux --define VERTEX_COLOR
+
+        static const char SHADER_TYPE_TABLE[6][2] = {"c", "d", "f", "g", "h", "v"};
+
+        int argc = 0;
+        const char* argv[16];
+        argv[argc++] = "-f";
+        argv[argc++] = filePath;
+        argv[argc++] = "-o";
+        argv[argc++] = "NOT_USED_HERE";
+        if(varyingPath)
+        {
+            argv[argc++] = "--varyingdef";
+            argv[argc++] = varyingPath;
+        }
+        argv[argc++] = "--type";
+        argv[argc++] = SHADER_TYPE_TABLE[type];
+        argv[argc++] = "--platform";
+#if BX_PLATFORM_LINUX
+        argv[argc++] = "linux";
+#endif
+        if(defines)
+        {
+            argv[argc++] = "--define";
+            argv[argc++] = defines;
+        }
+
+        // invoke compiler
+        MemoryBuffer mb;
+        int ret = bgfx::compileShader(&mb, argc, argv);
+
+        // if shader is correctly compiled, create and return shader handle
+        if(ret == 0)
+        {
+            const bgfx::Memory* mem = bgfx::makeRef(mb.data, mb.size);
+            bgfx::ShaderHandle handle = bgfx::createShader(mem);
+
+            //bx::DefaultAllocator crtAllocator;
+            //bx::free(&crtAllocator, mb.data);
+
+            return handle;
+        }
+
+        return BGFX_INVALID_HANDLE;
+    }
+
+
+
 
 } // namespace bgfx
 

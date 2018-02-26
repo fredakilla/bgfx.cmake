@@ -6,6 +6,8 @@
 #ifndef SHADERC_H_HEADER_GUARD
 #define SHADERC_H_HEADER_GUARD
 
+#include "writer.h"
+
 namespace bgfx
 {
 	extern bool g_verbose;
@@ -169,10 +171,21 @@ namespace bgfx
 	bool compilePSSLShader(const Options& _options, uint32_t _version, const std::string& _code, bx::WriterI* _writer);
 	bool compileSPIRVShader(const Options& _options, uint32_t _version, const std::string& _code, bx::WriterI* _writer);
 
+
+    //@@
     void compilerError(const char *_format, ...);
-    int compileShader(int _argc, const char* _argv[]);
+    int compileShader(MemoryBuffer* resultShader, int _argc, const char* _argv[]);
     void getShaderError(char* _outputText, uint16_t& _outputSize);
     #define fprintf(target, format, ...) compilerError(format, ##__VA_ARGS__)
+
+    #define BRTSHADERC_TYPE_COMPUTE     0   // c - compute
+    #define BRTSHADERC_TYPE_DOMAIN      1   // d - domain
+    #define BRTSHADERC_TYPE_FRAGMENT    2   // f - fragment
+    #define BRTSHADERC_TYPE_GEOMETRY    3   // g - geometry
+    #define BRTSHADERC_TYPE_HULL        4   // h - hull
+    #define BRTSHADERC_TYPE_VERTEX      5   // v - vertex
+
+    bgfx::ShaderHandle compileShader(uint32_t type, const char* filePath, const char* defines = nullptr, const char* varyingPath = nullptr);
 
 } // namespace bgfx
 
