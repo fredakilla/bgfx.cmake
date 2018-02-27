@@ -1,64 +1,63 @@
 #include <cstdio>
+#include <bx/file.h>
+#include <vector>
 
-// fix multiple definition errors
+// hack to fix the multiple definition link errors
 #define getUniformTypeName getUniformTypeName_shaderc
 #define nameToUniformTypeEnum nameToUniformTypeEnum_shaderc
 #define s_uniformTypeName s_uniformTypeName_shaderc
 
-#include <bx/file.h>
-#include <vector>
-
-struct MemoryBuffer
+namespace shaderc
 {
-    uint8_t* data;
-    uint32_t size;
-};
-
-class BufferWriter : public bx::FileWriter
-{
-public:
-
-    BufferWriter(MemoryBuffer* memBuffer) :
-        _memBuffer(memBuffer)
+    /// basic struct to hold memory block infos
+    struct MemoryBuffer
     {
-    }
+        uint8_t* data;
+        uint32_t size;
+    };
 
-    ~BufferWriter()
+    /// not a real FileWriter, but a hack to redirect write() to a memory block.
+    class BufferWriter : public bx::FileWriter
     {
-    }
+    public:
 
-    void finalize()
-    {
-        if(_memBuffer)
+        BufferWriter(MemoryBuffer* memBuffer) :
+            _memBuffer(memBuffer)
         {
-            bx::DefaultAllocator crtAllocator;
-            size_t size = _buffer.size() + 1;
-            _memBuffer->data = (uint8_t*)bx::alloc(&crtAllocator, size);
-            _memBuffer->size = size;
-
-            bx::memCopy(_memBuffer->data, _buffer.data(), _buffer.size());
-            _memBuffer->data[_memBuffer->size - 1] = '\0';
         }
-    }
 
-    int32_t write(const void* _data, int32_t _size, bx::Error* _err)
-    {
-        const char* data = (const char*)_data;
-        _buffer.insert(_buffer.end(), data, data+_size);
-        return _size;
-    }
+        ~BufferWriter()
+        {
+        }
 
+        void finalize()
+        {
+            if(_memBuffer)
+            {
+                bx::DefaultAllocator crtAllocator;
+                size_t size = _buffer.size() + 1;
+                _memBuffer->data = (uint8_t*)bx::alloc(&crtAllocator, size);
+                _memBuffer->size = size;
 
-private:
-    BX_ALIGN_DECL(16, uint8_t) m_internal[64];
-    typedef std::vector<uint8_t> Buffer;
-    Buffer _buffer;
-    MemoryBuffer* _memBuffer;
+                bx::memCopy(_memBuffer->data, _buffer.data(), _buffer.size());
+                _memBuffer->data[_memBuffer->size - 1] = '\0';
+            }
+        }
 
-};
+        int32_t write(const void* _data, int32_t _size, bx::Error* _err)
+        {
+            const char* data = (const char*)_data;
+            _buffer.insert(_buffer.end(), data, data+_size);
+            return _size;
+        }
 
-
-
+    private:
+        BX_ALIGN_DECL(16, uint8_t) m_internal[64];
+        typedef std::vector<uint8_t> Buffer;
+        Buffer _buffer;
+        MemoryBuffer* _memBuffer;
+    };
+}
 
 
 namespace bgfx
@@ -88,22 +87,24 @@ void printError(FILE* file, const char* format, ...)
 	va_end(args);
 }
 
-
-
+// hack to defined stuff
 #define fprintf printError
 #define main fakeMain
 #define g_allocator g_shaderc_allocator
 
+// fix warnings
+#undef BX_TRACE
+#undef BX_WARN
+#undef BX_CHECK
+
+// include original shaderc code files
 #include <../bgfx/tools/shaderc/shaderc.cpp>
 #include <../bgfx/tools/shaderc/shaderc_hlsl.cpp>
 #include <../bgfx/tools/shaderc/shaderc_glsl.cpp>
-
 //#define static_allocate static_allocate_shaderc
 //#define static_deallocate static_deallocate_shaderc
 //#include <../bgfx/tools/shaderc/shaderc_spirv.cpp>
 //#include <../bgfx/tools/shaderc/shaderc_pssl.cpp>
-
-
 
 namespace bgfx 
 {
@@ -115,15 +116,18 @@ namespace bgfx
 	{
 		return false;
     }
+}
 
 
-    const bgfx::Memory* compileShader(uint32_t type, const char* filePath, const char* defines, const char* varyingPath)
+
+#include "brtshaderc.h"
+namespace shaderc
+{
+    const bgfx::Memory* compileShader(ShaderType type, const char* filePath, const char* defines, const char* varyingPath)
     {
-        static const char SHADER_TYPE_TABLE[6] = {'c', 'd', 'f', 'g', 'h', 'v'};
-
-        Options options;
+        bgfx::Options options;
         options.inputFilePath = filePath;
-        options.shaderType = SHADER_TYPE_TABLE[type];
+        options.shaderType = type;
 
         // set platform
 #if BX_PLATFORM_LINUX
@@ -143,7 +147,7 @@ namespace bgfx
         // include current dir
         std::string dir;
         {
-            const char* base = baseName(filePath);
+            const char* base = bgfx::baseName(filePath);
 
             if (base != filePath)
             {
@@ -171,7 +175,7 @@ namespace bgfx
         // set varyingdef
         std::string defaultVarying = dir + "varying.def.sc";
         const char* varyingdef = varyingPath ? varyingPath : defaultVarying.c_str();
-        File attribdef(varyingdef);
+        bgfx::File attribdef(varyingdef);
         const char* parse = attribdef.getData();
         if (NULL != parse
         &&  *parse != '\0')
@@ -181,6 +185,7 @@ namespace bgfx
         else
         {
             fprintf(stderr, "ERROR: Failed to parse varying def file: \"%s\" No input/output semantics will be generated in the code!\n", varyingdef);
+            return nullptr;
         }
 
 
@@ -214,11 +219,11 @@ namespace bgfx
         bx::close(&reader);
 
 
+        // compile shader.
 
         MemoryBuffer mb;
         BufferWriter writer(&mb);
-
-        if ( compileShader(attribdef.getData(), data, size, options, &writer) )
+        if ( bgfx::compileShader(attribdef.getData(), data, size, options, &writer) )
         {
             // this will copy the compiled shader data to the MemoryBuffer
             writer.finalize();
@@ -229,8 +234,8 @@ namespace bgfx
         }
 
         return nullptr;
-
     }
 }
+
 #undef fprintf
 #include "bx/allocator.h"

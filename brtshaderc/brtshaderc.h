@@ -1,11 +1,25 @@
-namespace bgfx
+namespace shaderc
 {
-    #define SC_TYPE_COMPUTE     0   // c - compute
-    #define SC_TYPE_DOMAIN      1   // d - domain
-    #define SC_TYPE_FRAGMENT    2   // f - fragment
-    #define SC_TYPE_GEOMETRY    3   // g - geometry
-    #define SC_TYPE_HULL        4   // h - hull
-    #define SC_TYPE_VERTEX      5   // v - vertex
+    enum ShaderType
+    {
+        ST_VERTEX      = 'v',   /// vertex
+        ST_FRAGMENT    = 'f',   /// fragment
+        ST_COMPUTE     = 'c',   /// compute
+    };
 
-    const bgfx::Memory* compileShader(uint32_t type, const char* filePath, const char* defines = nullptr, const char* varyingPath = nullptr);
+    /**
+     * Compile a shader from source file and return memory pointer that contains the compiled shader.
+     *
+     * @param type : Shader type to comile (vertex, fragment or compute)
+     * @param filePath : Shader source file path.
+     * @param defines : List of defines semicolon separated ex: "foo=1;bar;baz=1".
+     * @param varyingPath : File path for varying.def.sc, or assume default name is "varying.def.sc" in current dir.
+     * @return
+     */
+    const bgfx::Memory* compileShader(
+            ShaderType type
+          , const char* filePath
+          , const char* defines = nullptr
+          , const char* varyingPath = nullptr
+          );
 }
