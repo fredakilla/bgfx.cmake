@@ -7,84 +7,31 @@
 #define nameToUniformTypeEnum nameToUniformTypeEnum_shaderc
 #define s_uniformTypeName s_uniformTypeName_shaderc
 
-namespace shaderc
-{
-    /// basic struct to hold memory block infos
-    struct MemoryBuffer
-    {
-        uint8_t* data;
-        uint32_t size;
-    };
-
-    /// not a real FileWriter, but a hack to redirect write() to a memory block.
-    class BufferWriter : public bx::FileWriter
-    {
-    public:
-
-        BufferWriter(MemoryBuffer* memBuffer) :
-            _memBuffer(memBuffer)
-        {
-        }
-
-        ~BufferWriter()
-        {
-        }
-
-        void finalize()
-        {
-            if(_memBuffer)
-            {
-                bx::DefaultAllocator crtAllocator;
-                size_t size = _buffer.size() + 1;
-                _memBuffer->data = (uint8_t*)bx::alloc(&crtAllocator, size);
-                _memBuffer->size = size;
-
-                bx::memCopy(_memBuffer->data, _buffer.data(), _buffer.size());
-                _memBuffer->data[_memBuffer->size - 1] = '\0';
-            }
-        }
-
-        int32_t write(const void* _data, int32_t _size, bx::Error* _err)
-        {
-            const char* data = (const char*)_data;
-            _buffer.insert(_buffer.end(), data, data+_size);
-            return _size;
-        }
-
-    private:
-        BX_ALIGN_DECL(16, uint8_t) m_internal[64];
-        typedef std::vector<uint8_t> Buffer;
-        Buffer _buffer;
-        MemoryBuffer* _memBuffer;
-    };
-}
-
-
 namespace bgfx
 {
-	typedef void(*UserErrorFn)(void*, const char*, va_list);
-	static UserErrorFn s_user_error_fn = nullptr;
-	static void* s_user_error_ptr = nullptr;
-	void setShaderCErrorFunction(UserErrorFn fn, void* user_ptr)
-	{
-		s_user_error_fn = fn;
-		s_user_error_ptr = user_ptr;
+    typedef void(*UserErrorFn)(void*, const char*, va_list);
+    static UserErrorFn s_user_error_fn = nullptr;
+    static void* s_user_error_ptr = nullptr;
+    void setShaderCErrorFunction(UserErrorFn fn, void* user_ptr)
+    {
+        s_user_error_fn = fn;
+        s_user_error_ptr = user_ptr;
     }
 }
 
 void printError(FILE* file, const char* format, ...)
 {
-	va_list args;
-	va_start(args, format);
-	if (bgfx::s_user_error_fn)
-	{
-		bgfx::s_user_error_fn(bgfx::s_user_error_ptr, format, args);
-	}
-	else
-	{
-		vfprintf(file, format, args);
-	}
-	va_end(args);
+    va_list args;
+    va_start(args, format);
+    if (bgfx::s_user_error_fn)
+    {
+        bgfx::s_user_error_fn(bgfx::s_user_error_ptr, format, args);
+    }
+    else
+    {
+        vfprintf(file, format, args);
+    }
+    va_end(args);
 }
 
 // hack to defined stuff
@@ -98,31 +45,74 @@ void printError(FILE* file, const char* format, ...)
 #undef BX_CHECK
 
 // include original shaderc code files
-#include <../bgfx/tools/shaderc/shaderc.cpp>
-#include <../bgfx/tools/shaderc/shaderc_hlsl.cpp>
-#include <../bgfx/tools/shaderc/shaderc_glsl.cpp>
+#include "../../bgfx/tools/shaderc/shaderc.cpp"
+#include "../../bgfx/tools/shaderc/shaderc_hlsl.cpp"
+#include "../../bgfx/tools/shaderc/shaderc_glsl.cpp"
 //#define static_allocate static_allocate_shaderc
 //#define static_deallocate static_deallocate_shaderc
-//#include <../bgfx/tools/shaderc/shaderc_spirv.cpp>
-//#include <../bgfx/tools/shaderc/shaderc_pssl.cpp>
+//#include "../../bgfx/tools/shaderc/shaderc_spirv.cpp"
+//#include "../../bgfx/tools/shaderc/shaderc_pssl.cpp"
 
 namespace bgfx 
 {
     bool compilePSSLShader(const Options&, uint32_t, const std::string&, bx::WriterI*)
-	{
-		return false;		
-	}
-	bool compileSPIRVShader(const Options&, uint32_t, const std::string&, bx::WriterI*)
-	{
-		return false;
+    {
+        return false;
+    }
+    bool compileSPIRVShader(const Options&, uint32_t, const std::string&, bx::WriterI*)
+    {
+        return false;
     }
 }
 
 
 
 #include "brtshaderc.h"
+
 namespace shaderc
 {
+    /// not a real FileWriter, but a hack to redirect write() to a memory block.
+    class BufferWriter : public bx::FileWriter
+    {
+    public:
+
+        BufferWriter()
+        {
+        }
+
+        ~BufferWriter()
+        {
+        }
+
+        const bgfx::Memory* finalize()
+        {
+            if(_buffer.size() > 0)
+            {
+                _buffer.push_back('\0');
+
+                const bgfx::Memory* mem = bgfx::alloc(_buffer.size());
+                bx::memCopy(mem->data, _buffer.data(), _buffer.size());
+                return mem;
+            }
+
+            return nullptr;
+        }
+
+        int32_t write(const void* _data, int32_t _size, bx::Error* _err)
+        {
+            const char* data = (const char*)_data;
+            _buffer.insert(_buffer.end(), data, data+_size);
+            return _size;
+        }
+
+    private:
+        BX_ALIGN_DECL(16, uint8_t) m_internal[64];
+        typedef std::vector<uint8_t> Buffer;
+        Buffer _buffer;
+    };
+
+
+
     const bgfx::Memory* compileShader(ShaderType type, const char* filePath, const char* defines, const char* varyingPath)
     {
         bgfx::Options options;
@@ -221,21 +211,13 @@ namespace shaderc
 
         // compile shader.
 
-        MemoryBuffer mb;
-        BufferWriter writer(&mb);
+        BufferWriter writer;
         if ( bgfx::compileShader(attribdef.getData(), data, size, options, &writer) )
         {
-            // this will copy the compiled shader data to the MemoryBuffer
-            writer.finalize();
-
-            // make memory ref on MemoryBuffer
-            const bgfx::Memory* mem = bgfx::makeRef(mb.data, mb.size);
-            return mem;
+            // this will copy the compiled shader data to a memory block and return mem ptr
+            return writer.finalize();
         }
 
         return nullptr;
     }
 }
-
-#undef fprintf
-#include "bx/allocator.h"
